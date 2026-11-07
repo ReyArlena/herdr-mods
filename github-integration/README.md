@@ -104,10 +104,13 @@ herdr-app do pane.split '{"direction":"right","mod":"github-integration"}'
   finds the repo root and `gh repo view` its GitHub name (so `gh repo set-default`
   is honoured for forks). An agent moving between folders of the same repo changes
   nothing, and a short visit outside the repo (a temp folder) is ignored.
-- **No polling.** It reads GitHub when it becomes visible (if the last read is
-  more than 10 s old), when the focused tab's repo changes, when you change a tab
-  or filter it hasn't read yet, and when you press Refresh. A hidden panel does
-  nothing.
+- **Auto refresh, only while visible.** While the panel is on screen and showing a
+  list or an item, it reads that again every 30 s (Settings: Off, 15s, 30s, 1m or
+  5m). These background reads don't show "Loading…", and one that fails (offline
+  for a moment) keeps what was shown. A hidden panel, a form or a failing gh check
+  reads nothing. It also reads when it becomes visible (if the last read is more
+  than 10 s old), when the focused tab's repo changes, when you pick a tab or
+  filter it hasn't read yet, and on Refresh.
 - **Issues:** Open, Closed or All, up to 100, most recently updated first.
 - **Pull requests:** Open, Merged, Closed or All, up to 100, with branch and draft
   state. A PR's page adds `head → base`, lines added and removed, files changed
@@ -172,7 +175,8 @@ herdr-app do pane.split '{"direction":"right","mod":"github-integration"}'
   and the header's arrow icon opens the current list: the repo's issues or pull
   requests, or the project.
 - **Settings** are stored in Herdr's shared state (`github-integration.settings`):
-  the tab, filters, project choices and any prompt you changed. A prompt left at
+  the tab, filters, project choices, the auto refresh interval and any prompt you
+  changed. A prompt left at
   its default isn't saved, so it follows the default when that changes. Every copy
   of the mod uses them.
 

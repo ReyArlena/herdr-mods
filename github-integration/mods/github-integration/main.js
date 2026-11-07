@@ -27,6 +27,9 @@ const REQUEST_MAX_AGE_S = 120;
 const FRESH_MS = 10000;
 const TABS = [["issues", "Issues"], ["prs", "Pull requests"], ["project", "Project"]];
 const STATE_LABEL = { open: "Open", closed: "Closed", merged: "Merged", all: "All" };
+// Auto refresh while the panel is on screen, in seconds (0: off).
+const POLL_CHOICES = [[0, "Off"], [15, "15s"], [30, "30s"], [60, "1m"], [300, "5m"]];
+const TICK_MS = 5000;
 
 // Settings live in Herdr's shared state, so every copy of the mod agrees.
 // Only prompts someone changed are kept: one left at its default follows new defaults.
@@ -37,7 +40,7 @@ function customPrompts(s) {
 function settingsNow() {
   const s = shared(SETTINGS) ?? {};
   return {
-    tab: "issues", issueState: "open", prState: "open", projects: {}, hidden: {},
+    tab: "issues", issueState: "open", prState: "open", projects: {}, hidden: {}, poll: 30,
     ...s,
     prompts: { ...DEFAULT_PROMPTS, ...customPrompts(s) },
   };
@@ -102,6 +105,8 @@ export default class GitHub extends View {
       return;
     }
     this.watchInbox(cx);
+    this.quiet = new Set();     // reads started by auto refresh: no "Loading…", no error over good data
+    cx.timer.every(TICK_MS, (cx) => this.tick(cx));
     this.changedAt = shared(CHANGED)?.at ?? 0;
     this.view = "list";         // "list" | "detail" | "new" | "settings"
     this.detail = null;         // { kind: "issue" | "pr" | "draft", repo, number, stub, item?, project? }
@@ -161,13 +166,26 @@ export default class GitHub extends View {
     const hit = this.cache.get(key);
     if (hit && Date.now() - hit.at < maxAge) return;
     this.inflight.add(key);
+    const quiet = Boolean(this.polling && hit && !hit.error);
+    if (quiet) this.quiet.add(key);
     cx.spawn(async (cx) => {
       let r;
       try { r = await fn(); } catch (e) { r = { error: String(e?.message ?? e) }; }
-      this.cache.set(key, { ...r, at: Date.now() });
-      this.inflight.delete(key);
+      // A background read that failed (offline for a moment) keeps what was shown.
+      if (quiet && r.error) this.cache.set(key, { ...hit, at: Date.now() });
+      else this.cache.set(key, { ...r, at: Date.now() });
+      this.inflight.delete(key); this.quiet.delete(key);
       cx.notify();
     });
+  }
+
+  // Auto refresh: re-reads what is on screen once it is older than the chosen interval.
+  // Does nothing while the panel is hidden, gh is failing, or a form is open.
+  tick(cx) {
+    const every = settingsNow().poll;
+    if (!every || !this.health()?.ok || (this.view !== "list" && this.view !== "detail") || !isShown()) return;
+    this.polling = true;
+    try { this.ensure(cx, every * 1000); } finally { this.polling = false; }
   }
 
   issuesKey(s) { return `${this.pkey()}|issues|${s.issueState}`; }
@@ -491,7 +509,7 @@ export default class GitHub extends View {
       .child(v_flex().flex_1().min_w(0).gap(1)
         .child(div().truncate().font_semibold().line_height("16px").child(title))
         .child(div().truncate().text_size(11).line_height("14px").text_color(t.dim).child(sub)))
-      .when(this.inflight.size > 0, (el) => el.child(div().text_size(11.5).text_color(t.dim).pr(4).child("Loading…")))
+      .when([...this.inflight].some((k) => !this.quiet.has(k)), (el) => el.child(div().text_size(11.5).text_color(t.dim).pr(4).child("Loading…")))
       .when(this.view === "list" && s.tab === "issues" && Boolean(place?.repo), (el) => el.child(iconButton(t, "gh-new", "plus", "New issue", (cx) => this.openNew(cx))))
       .when(Boolean(url), (el) => el.child(iconButton(t, "gh-web", "external", "Open on GitHub", (cx) => cx.open_url(url))))
       .when((this.view === "list" || this.view === "detail") && Boolean(place?.repo), (el) => el.child(iconButton(t, "gh-refresh", "refresh", "Refresh", (cx) => { this.checkHealth(this.healthOn, cx, 0); this.ensure(cx, 0); cx.notify(); })))
@@ -711,6 +729,11 @@ export default class GitHub extends View {
     return v_flex().flex_1().min_h(0)
       .child(div().id("gh-settings-scroll").flex_1().min_h(0).overflow_y_scrollbar()
         .child(v_flex().w_full().p(16).gap(16)
+          .child(v_flex().w_full().gap(6)
+            .child(div().font_semibold().child("Auto refresh"))
+            .child(div().text_size(11.5).text_color(t.dim).child("How often the list or item on screen is read again while the panel is visible. Applies at once."))
+            .child(h_flex().gap(5).flex_wrap().children(POLL_CHOICES.map(([secs, label]) =>
+              chip(t, `gh-poll-${secs}`, label, settingsNow().poll === secs, () => setSettings({ poll: secs }))))))
           .child(div().text_size(12).text_color(t.dim).child("What an agent gets before the reference to what you send it."))
           .child(box("issue", "Issue prompt", "Followed by repo#number, title and link."))
           .child(box("pr", "Pull request prompt", "Followed by repo#number, title and link."))
