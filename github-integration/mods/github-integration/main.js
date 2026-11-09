@@ -561,24 +561,34 @@ export default class GitHub extends View {
     if (!hit.items.length) return [chips, note(t, `No ${what} here.`)];
     if (!shown.length) return [chips, note(t, `No ${what} match the filter.`)];
     const repo = this.place.repo;
-    return [chips, div().id(`gh-${s.tab}`).flex_1().min_h(0).overflow_y_scrollbar().px(6).pt(4).pb(6)
-      .children(shown.map((i) => this.row(t, `gh-r-${s.tab}-${i.number}`, i, prs ? `#${i.number} · ${i.headRefName ?? ""}` : `#${i.number}`,
-        (cx) => this.openDetail({ kind: prs ? "pr" : "issue", repo, number: i.number, stub: i }, cx)))) ];
+    return [chips, div().id(`gh-${s.tab}`).flex_1().min_h(0).overflow_y_scrollbar()
+      .child(v_flex().px(10).pt(8).pb(10).gap(8).children(shown.map((i) => this.row(t, `gh-r-${s.tab}-${i.number}`, i, prs ? `#${i.number} · ${i.headRefName ?? ""}` : `#${i.number}`,
+        (cx) => this.openDetail({ kind: prs ? "pr" : "issue", repo, number: i.number, stub: i }, cx))))) ];
   }
 
+  // A card: the number leading the title in the accent colour, then state, branch, who, when
+  // and the labels.
   row(t, id, i, lead, open, extra = null) {
     const [stateText, stateColor] = stateLook(t, i);
     const showState = i.state && i.state !== "OPEN" || i.isDraft;
-    return v_flex().id(id).flex_none().px(10).py(7).gap(3).rounded(6).cursor_pointer()
-      .hover((s) => s.bg(t.hover))
+    const [ref, ...rest] = String(lead ?? "").split(" · ");
+    const meta = [...rest, i.author?.login, i.updatedAt ? ago(i.updatedAt) : null].filter(Boolean).join(" · ");
+    const hasFoot = Boolean(showState || meta || extra || i.labels?.length);
+    return v_flex().id(id).w_full().flex_none().px(12).pt(10).pb(11).gap(7).rounded(10)
+      .border_1().border_color(t.border).bg(t.surface).cursor_pointer()
+      .hover((s) => s.bg(t.hover).border_color(t.input))
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
       .on_click((_e, cx) => open(cx))
-      .child(div().w_full().text_size(13).child(i.title))
-      .child(h_flex().w_full().gap(6).items_center().flex_wrap().text_size(11).text_color(t.dim)
-        .when(Boolean(showState), (el) => el.child(badge(t, stateText, stateColor)))
-        .when(Boolean(extra), (el) => el.child(extra))
-        .child([lead, i.author?.login, i.updatedAt ? ago(i.updatedAt) : null].filter(Boolean).join(" · "))
-        .children(labelChips(t, i.labels, id)));
+      // The number leads the title in the accent colour: gpui text has no coloured inline
+      // runs, so the title is a wrapping row of words with the number as its first item.
+      .child(h_flex().w_full().flex_wrap().items_center().gap_x(4).gap_y(0).text_size(13).line_height("20px").font_medium()
+        .when(Boolean(ref), (el) => el.child(div().flex_none().mr(2).text_color(t.accent).child(ref)))
+        .children(String(i.title ?? "").split(/\s+/).filter(Boolean).map((w) => div().flex_none().child(w))))
+      .when(hasFoot, (el) => el.child(h_flex().w_full().gap(6).items_center().flex_wrap().text_size(11).text_color(t.dim)
+        .when(Boolean(showState), (e) => e.child(badge(t, stateText, stateColor)))
+        .when(Boolean(meta), (e) => e.child(div().child(meta)))
+        .when(Boolean(extra), (e) => e.child(extra))
+        .children(labelChips(t, i.labels, id))));
   }
 
   // The project: a picker when several are linked, status chips, then items grouped by status.
@@ -617,9 +627,9 @@ export default class GitHub extends View {
       .filter(([, items]) => items.length);
     const project = { title: hit.project.title, url: hit.project.url };
     const list = !groups.length ? note(t, hit.items.length ? "No items match these filters." : "This project has no items.")
-      : div().id("gh-project").flex_1().min_h(0).overflow_y_scrollbar().px(6).pt(4).pb(6)
-        .children(groups.flatMap(([o, items], g) => [
-          h_flex().id(`gh-pg-${g}`).flex_none().px(10).pt(10).pb(4).gap(6).items_center().text_size(11.5).font_semibold().text_color(t.muted)
+      : div().id("gh-project").flex_1().min_h(0).overflow_y_scrollbar()
+        .child(v_flex().px(10).pt(4).pb(10).gap(8).children(groups.flatMap(([o, items], g) => [
+          h_flex().id(`gh-pg-${g}`).flex_none().px(2).pt(8).gap(6).items_center().text_size(11.5).font_semibold().text_color(t.muted)
             .child(div().size(8).rounded(4).bg(optionColor(t, o.color)))
             .child(`${o.name}`).child(div().font_normal().text_color(t.dim).child(String(items.length))),
           ...items.map((i, k) => this.row(t, `gh-pi-${g}-${k}`, i,
@@ -628,7 +638,7 @@ export default class GitHub extends View {
               kind: i.type === "DRAFT_ISSUE" ? "draft" : i.type === "PULL_REQUEST" ? "pr" : "issue",
               repo: i.repo, number: i.number, stub: i, item: i, project }, cx),
             i.assignees?.length ? div().child(i.assignees.map((a) => `@${a}`).join(" ")) : null)),
-        ]));
+        ])));
     return [...head, chips, list];
   }
 
@@ -674,13 +684,16 @@ export default class GitHub extends View {
     const agent = ctx ? agentIn(ctx.tab) : null;
     const page = d.kind === "draft" ? itemUrl(d.project, d.item) : item.url;
     const closable = d.kind === "issue" && loaded && item.state === "OPEN";
-    const actions = h_flex().flex_none().px(14).py(10).gap(8).items_center().flex_wrap().border_t(1).border_color(t.border)
+    // The other actions share a row; sending to the agent, the main one, runs full width under them.
+    const wide = (el) => el.flex_1().min_w(0).justify_center();
+    const actions = v_flex().flex_none().px(14).py(10).gap(8).border_t(1).border_color(t.border)
+      .child(h_flex().w_full().gap(8)
+        .child(wide(pill(t, "gh-newtab", "New agent tab", (cx) => this.newAgentTab(ctx, text, d.kind === "draft" ? "Draft" : `#${d.number}`, cx),
+          { disabled: this.sending || !ready })))
+        .child(wide(pill(t, "gh-open", "Open on GitHub", (cx) => cx.open_url(page), { disabled: !page })))
+        .when(closable, (el) => el.child(wide(pill(t, "gh-close-issue", "Close issue", () => this.openCloseDialog(d, item))))))
       .child(pill(t, "gh-send", this.sending ? "Sending…" : agent ? `Send to ${agent.program?.name ?? "agent"}` : "No agent in this tab",
-        (cx) => this.sendToAgent(agent, text, what, cx), { strong: true, disabled: !agent || this.sending || !ready }))
-      .child(pill(t, "gh-newtab", "New agent tab", (cx) => this.newAgentTab(ctx, text, d.kind === "draft" ? "Draft" : `#${d.number}`, cx),
-        { disabled: this.sending || !ready }))
-      .child(pill(t, "gh-open", "Open on GitHub", (cx) => cx.open_url(page), { disabled: !page }))
-      .when(closable, (el) => el.child(pill(t, "gh-close-issue", "Close issue", () => this.openCloseDialog(d, item))));
+        (cx) => this.sendToAgent(agent, text, what, cx), { strong: true, disabled: !agent || this.sending || !ready }).w_full().justify_center());
     return v_flex().flex_1().min_h(0).child(doc).child(actions);
   }
 

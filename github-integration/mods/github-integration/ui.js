@@ -36,12 +36,44 @@ export const chip = (t, id, label, on, action, dot = null) =>
     .when(Boolean(dot), (el) => el.child(div().size(7).rounded(4).flex_none().bg(dot)))
     .child(label);
 
-// Read-only label chips with the label's own color as a dot.
+// Read-only label chips, drawn the way GitHub draws them on a dark page: the label's
+// colour as a faint fill and border, and as text pushed lighter (or darker on a light
+// theme) until it reads against that fill.
 export const labelChips = (t, labels, prefix) =>
-  (labels ?? []).map((l, i) => h_flex().id(`${prefix}-lbl-${i}`).flex_none().h(18).px(6).gap(4).items_center().rounded(9)
-    .border_1().border_color(t.border).text_size(10.5).text_color(t.muted)
-    .child(div().size(7).rounded(4).bg(`#${l.color || "888888"}`))
-    .child(l.name));
+  (labels ?? []).map((l, i) => {
+    const look = labelLook(l.color, t.surface);
+    return div().id(`${prefix}-lbl-${i}`).flex_none().h(20).px(8).flex().items_center().rounded(10)
+      .border_1().border_color(look.border).bg(look.fill).text_size(11).font_medium().text_color(look.text)
+      .child(l.name);
+  });
+
+const rgb = (hex) => {
+  const h = String(hex ?? "").replace("#", "");
+  const n = parseInt(h.length >= 6 ? h.slice(0, 6) : "888888", 16);
+  return Number.isNaN(n) ? [136, 136, 136] : [n >> 16 & 255, n >> 8 & 255, n & 255];
+};
+const hex = (c) => "#" + c.map((v) => Math.round(Math.min(255, Math.max(0, v))).toString(16).padStart(2, "0")).join("");
+const mix = (a, b, k) => a.map((v, i) => v + (b[i] - v) * k);
+const luminance = (c) => {
+  const [r, g, b] = c.map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+const contrast = (a, b) => { const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+
+// fill and border as #rrggbbaa over the card; text is the label colour moved toward white
+// (dark theme) or black (light theme) in small steps until it reaches 4.5:1 against the
+// fill as it shows on the card.
+export function labelLook(color, surface) {
+  const c = rgb(color), base = rgb(surface);
+  const dark = luminance(base) < 0.4;
+  const alpha = dark ? 0.18 : 0.2;
+  const shown = mix(base, c, alpha);
+  const toward = dark ? [255, 255, 255] : [0, 0, 0];
+  let text = c;
+  for (let k = 0; k <= 1 && contrast(text, shown) < 4.5; k += 0.05) text = mix(c, toward, k);
+  const a = (x) => Math.round(x * 255).toString(16).padStart(2, "0");
+  return { fill: hex(c) + a(alpha), border: hex(c) + a(dark ? 0.4 : 0.45), text: hex(text) };
+}
 
 export const badge = (t, text, color) =>
   div().flex_none().px(6).h(18).flex().items_center().rounded(9).text_size(10.5).font_medium().bg(color).text_color(t.background).child(text);
