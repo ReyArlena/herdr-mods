@@ -1,1 +1,1 @@
-{ "place": "none", "title": "Prompts", "overlay": { "kind": "window", "width": 420, "height": 0.85, "key": "prompt-history" } }
+{ "place": "none", "title": "Prompt History", "overlay": { "kind": "window", "width": 420, "height": 0.85, "key": "prompt-history" } }
