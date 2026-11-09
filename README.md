@@ -5,6 +5,7 @@ Mods for [Herdr](https://herdr.dev), the desktop app for terminals and coding ag
 | Mod | What it does |
 |---|---|
 | [GitHub: Pass Issues & PRs to Agent](github-integration/) | Lists the current project's GitHub issues, PRs and project items, sends one to your agent, creates issues |
+| [Prompt History](prompt-history/) | Cards of each prompt you gave a Claude Code agent and what it answered, readable in a panel or dialog |
 
 Each top-level folder is one shareable package, laid out the way Herdr expects:
 
