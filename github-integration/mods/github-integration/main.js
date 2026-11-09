@@ -1,8 +1,8 @@
 // GitHub: Pass Issues & PRs to Agent.
 // Issues, pull requests and project items of the repo behind the focused tab. Open one,
 // then paste a reference to it into the tab's agent, or start a new agent tab with it.
-// Works as a window (mod.open), a layout block or a pane, in any layout. It never polls:
-// it reads GitHub when shown, when the tab's repo changes, and on Refresh.
+// Works as a window (mod.open), a layout block or a pane, in any layout. It reads GitHub
+// when shown, when the tab's repo changes, on Refresh, and on a timer while on screen.
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, Input, InputState, Textarea, TextareaState, TextView } from "gpui-base";
 import { agents, appHome, closeOverlay, focused, hc, knownAgents, layout, notify, openOverlay, panes, props, readTextFile, run, settings, setShared, shared, spaces, theme, watchFolder } from "herdr";
